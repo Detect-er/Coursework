@@ -23,8 +23,8 @@ int main()
 		global_v++;
 		local_v++;
 
-		printf("The child1 process: pid=%d, ppid=%d\nc1-global variable:%d\nc1-local variable:%d\n",\ 
-				getpid(),getppid(),global_v,local_v);
+		printf("The child1 process: pid=%d, ppid=%d\nc1-global variable:%d\nc1-local variable:%d\n，&global=%p.\n,&local=%p.\n",\ 
+				getpid(),getppid(),global_v,local_v,&global_v,&local_v);
 		
 		puts("**************************");
 		exit(EXIT_SUCCESS);
@@ -41,8 +41,8 @@ int main()
 		{
 			global_v++;
 			local_v++;
-			printf("The child2 process: pid=%d, ppid=%d,\nc2-global variable:%d\nc2-local variable:%d\n",\ 
-					getpid(),getppid(),global_v,local_v);
+			printf("The child2 process: pid=%d, ppid=%d,\nc2-global variable:%d\nc2-local variable:%d\n,&global=%p.\n,&local=%p.\n",\ 
+					getpid(),getppid(),global_v,local_v,&global_v,&local_v);
 			puts("**************************");
 			execve("/bin/echo",args,NULL);
 			puts("The program should not come here!");
@@ -52,8 +52,8 @@ int main()
 			global_v++;
 			local_v++;
 
-			printf("The parent process:pid=%d, ppid=%d\nglobal variable:%d\nlocal variable:%d\n",\ 
-					getpid(),getppid(),global_v,local_v);
+			printf("The parent process:pid=%d, ppid=%d\nglobal variable:%d\nlocal variable:%d\n,&global=%p.\n,&local=%p.\n",\ 
+					getpid(),getppid(),global_v,local_v,&global_v,&local_v);
 			puts("**************************");
 			
 			cpid1=wait(&status1);
