@@ -1,0 +1,301 @@
+# 实验题目：构建目标系统 
+## 小组名称：异度侵入组
+## 小组成员：赵宇聪 汪倩 刘迪
+# 一、实验目的 
+
+* 掌握裁剪Linux内核的方法，理解内核选项的意义； 
+* 熟悉编译内核并加载内核到目标系统的方法与过程； 
+* 了解模块与内核的关系，掌握内核模块配置编译、安装与卸载流程，为进一步编程，如驱动编程打下基础； 
+* 掌握创建、安装(卸载)并使用文件系统的方法
+# 二、实验内容
+
+* 首先用默认配置重新编译一遍已安装到开发板的内核，将新的内核替换现有内核，检查是否通过；
+* 在原始版本基础上，重新配置Linux内核，构建一个嵌入式的Linux内核；
+* 编译安装重新配置后的内核、模块及dtbs设备树 ；
+* 针对默认配置中不少于10个kernel feature进行重新配置（裁剪为主、偶有增加），并解释理由；(Y=>N，N=>Y)
+* 保留必要的模块安装，剩余(占多数)取消；(M=>N)
+* make后将新的内核安装到开发板运行测试； 
+* 选择至少二个模块加载与卸载，检查是否加载、卸载成功； 
+* 构建并安装至少一款不同于根文件系统、用于应用开发的其它文件系统。  
+# 三、实验过程与结果
+
+1. 重新编译内核，在开发板上安装新内核
+
+官网提供了两种方式对树莓派内核进行编译，一种是local building，一种是交叉编译，我们选择第二种。以下皆参考官网：[https://www.raspberrypi.org/documentation/linux/kernel/building.md](https://www.raspberrypi.org/documentation/linux/kernel/building.md)
+
+### 1.1 准备工作
+
+（1）在host上安装下载工具链(ToolChain)：
+
+```   cs
+git clone https://github.com/raspberrypi/tools ~/tools
+```
+（2）更新PATH环境变量，使系统可以找到toolchain，以用于交叉编译
+```   cs
+echo PATH=\$PATH:~/tools/arm-bcm2708/arm-linux-gnueabihf/bin >> ~/.bashrc
+source ~/.bashrc
+```
+（3）下载源代码
+```   plain
+git clone --depth=1 https://github.com/raspberrypi/linux
+```
+（4）安装必要的工具(dependencies)
+```   plain
+sudo apt install git bc bison flex libssl-dev make libc6-dev libncurses5-dev
+```
+### 1.2 在host上交叉编译
+
+配置内核，在内核代码目录执行以下命令，生成config
+
+```   plain
+cd linux
+KERNEL=kernel7
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- bcm2709_defconfig
+```
+编译内核
+```   plain
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- zImage modules dtbs
+```
+### 1.3 安装内核到树莓派上
+
+（1）在目标端执行uname -a，查看原内核版本：
+
+![图片](https://uploader.shimo.im/f/a89ZzilRPaTezf1z.png!thumbnail)
+
+（2）将sd卡插入host主机，首先lsblk，查看sd卡的标号，sd卡对应的分区为sdc1和sdc2，sdc1是FAT(boot)分区，sdc2是(ext4)文件系统(root)分区
+
+![图片](https://uploader.shimo.im/f/Bc2fRU7sHKkXdGDz.png!thumbnail)
+
+（3）挂载(mount)sd卡
+
+将sdb1、sdb2分别mount至fat32、ext4
+
+```   plain
+mkdir mnt
+mkdir mnt/fat32
+mkdir mnt/ext4
+sudo mount /dev/sdb1 mnt/fat32
+sudo mount /dev/sdb2 mnt/ext4
+```
+（4）安装模块，模块是动态加载内核中，是内核的一部分
+```   plain
+sudo env PATH=$PATH make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=mnt/ext4 modules_install
+```
+（5）将新编译好的内核、dtbs设备树拷贝到SD卡中
+```   plain
+sudo cp mnt/fat32/$KERNEL.img mnt/fat32/$KERNEL-backup.img
+sudo cp arch/arm/boot/zImage mnt/fat32/$KERNEL.img
+sudo cp arch/arm/boot/dts/*.dtb mnt/fat32/
+sudo cp arch/arm/boot/dts/overlays/*.dtb* mnt/fat32/overlays/
+sudo cp arch/arm/boot/dts/overlays/README mnt/fat32/overlays/
+sudo umount mnt/fat32
+sudo umount mnt/ext4
+```
+（6）将SD卡插回树莓派，连接屏幕启动，显示开机界面，可发现内核版本已发生改变
+![图片](https://uploader.shimo.im/f/GWbUNQ202QTwjd1I.png!thumbnail)
+
+
+1. 裁剪内核，重新配置
+### 2.1 准备工作
+
+（1）安装必备软件编译工具
+
+执行：apt-getinstall libncurses5-dev build-essential kernel-package
+
+libncurses5-dev是为之后配置内核能运行 make menuconfig程序做准备
+
+（2）清理1中编译的内核
+
+make ARCH=arm CROSS_COMPILE=arm-linux- distclean
+
+### 2.2 裁剪内核并重新配置
+
+（1）在linux目录下执行：
+
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- menuconfig
+
+出现选项菜单
+
+![图片](https://uploader.shimo.im/f/EMCCO23Uzyk7H8iW.png!thumbnail)
+
+（2）根据项目需要，对内核配置中的选项进行选择
+
+列举几项配置：
+
+1、General setup
+
+1.1 BSD Process Accounting    N=>Y
+
+用户进程访问内核时将进程信息写入文件中，通常主要包括进程的创建时间/创建者/内存占用等信息
+
+1.2 Auditing support      Y=>N
+
+审记支持，用于和内核的某些子模块同时工作，例如Security Enhanced Linux。只有选择此项及它的子项，才能调用有关审记的系统调用.
+
+1.3 Support initial ramdisks compressed using LZMA    Y=>N
+
+不需要该压缩包格式
+
+1.4Support initial ramdisks compressed using XZ    Y=>N
+
+不需要该压缩包格式
+
+2、Enable loadable module support
+
+2.1 Forced module unloading    Y=>N
+
+允许强制卸载正在使用中的模块这个选项允许你强行卸除模块，即使内核认为这不安全。内核将会立即移除模块，而不管是否有人在使用它（用 rmmod -f 命令），比较危险不选。
+
+2.2 Module versioning support     Y=>N
+
+选这项会添加一些版本信息，来给编译的模块提供独立的特性，以使不同的内核在使用同一模块时区别于它原有的模块。不需要。
+
+2.3 Source checksum for all modules    Y=>N
+
+为所有的模块校验源码,如果你不是自己编写内核模块就不需要它这个功能是为了防止你在编译模块时不小心更改了内核模块的源代码但忘记更改版本号而造成版本冲突。不需要。
+
+3、Enable the block layer  
+
+3.1 Partition Types--->Advanced partition selection    Y=>N
+
+    如果想要在linux上使用一个在其他的介质上运行着操作系统的硬盘时才选上
+
+4、Networking support
+
+4.1 CAN bus subsystem support    M=>N
+
+CAN bus作为TX2的外设，一般需要驱动，也有一些功能函数，可以用这些函数进行应用编程。Linux下的canbus是通过socket进行can传输的。不需要。
+
+4.2 Bluetooth subsystem support    M=>N
+
+用不到
+
+4.3RF switch subsystem support    M=>N
+
+除了特殊需求,最好不要选上,不然你会发现你的蓝牙设备可能需要rfkill解锁才能正常使用
+
+4.4Amateur Radio support     Y=>N
+
+业余收音机支持，不需要
+
+（3）最后save，执行make命令重新编译，与1中操作相同，进行安装
+
+![图片](https://uploader.shimo.im/f/E3VCs5QlcO12k7qh.png!thumbnail)
+
+![图片](https://uploader.shimo.im/f/ieTSo9U41HD5n2FZ.png!thumbnail)
+
+1. 选择至少二个模块加载与卸载
+### 3.1 准备工作
+
+ 使用命令lsmod查看系统的模块状态：
+
+![图片](https://uploader.shimo.im/f/1A9WTCjUlhvwT4sM.png!thumbnail)
+
+### 3.2 加载模块
+
+加载模块i2c_dev，并通过lsmod查看系统此时的模块状态，检查是否加载成功。
+
+```   plain
+sudo insmod /lib/modules/4.19.120-v7+/kernel/drivers/i2c/i2c_dev.ko
+```
+### ![图片](https://uploader.shimo.im/f/aT25ApPzGsro4tbd.png!thumbnail)
+
+### 3.3 卸载模块
+
+卸载模块i2c_dev，并通过lsmod查看系统此时的模块状态，检查是否卸载成功。
+
+```   plain
+sudo rmmod i2c_dev
+```
+![图片](https://uploader.shimo.im/f/kjBQ4dZkrCEyWk3c.png!thumbnail)
+
+
+
+1. 构建并安装不同于根文件系统、用于应用开发的其它文件系统
+### 4.1 准备工作
+
+使用sudo fdisk –l命令查看当前的文件系统的使用情况：
+
+```   plain
+sudo fdisk -l
+```
+# ![图片](https://uploader.shimo.im/f/xLjBmHcEP8BjlRnX.png!thumbnail)
+
+![图片](https://uploader.shimo.im/f/cVCZMdHDSa7PVY1b.png!thumbnail)
+
+扩展分区是不能被格式化和直接使用的，所以还要在扩展分区内部再建立逻辑分区。
+
+### 4.2 使用fdisk增加分区
+
+（1）创建1个主分区，1个扩展分区，并在扩展分区上建立1个逻辑分区
+
+*  创建主分区
+
+可以看出mmcblk0磁盘仍然有空间未启动；接下来进行磁盘分    区,disk/dev/mmcblk0进入该设备
+
+输入p,打印分区表
+
+![图片](https://uploader.shimo.im/f/UmHG0FMqjQcysf8Y.png!thumbnail)
+
+        输入n，新建分区
+
+        输入e，建立一个扩展分区 大小3M
+
+ 输入n，新建分区
+
+        输入l,在扩展分区上建立一个逻辑分区 大小2M
+
+      ![图片](https://uploader.shimo.im/f/ixZLA3FiVqAO1jAr.png!thumbnail)
+
+ 输入n，新建分区
+
+ 输入p,创建一个主分区，大小206.5KIB
+
+![图片](https://uploader.shimo.im/f/KdT4guf7KPbTw69L.png!thumbnail)
+
+ 输入P，查看分区列表
+
+![图片](https://uploader.shimo.im/f/ROhsnFsIDSOCE2lq.png!thumbnail)
+
+ 输入W，保存退出
+
+（2）分别在主分区和逻辑分区上创建ext4文件系统，进行初始化
+
+```   plain
+sudo mkfs.ext4 /dev/mmcblk0p4
+ 
+sudo mkfs.ext4 /dev/mmcblk0p5
+```
+（3）重启系统，分区信息修改生效‘
+
+（4）df -Th来查看下文件挂载的内容
+
+（5）创建个test文件，用来将磁盘挂载到这个文件来用
+
+```   plain
+sudo mkdir test
+```
+ （6）用mount挂载，df 查看，发现刚才初始的、/dev/mmcblk0p5已经挂载到了test文件上
+```   plain
+sudo mount /dev/mmcblk0p5/test
+```
+ （7）修改/etc/fstab文件vim /etc/fstab
+          重启服务器以后，已挂载的挂载点消失，故需要修改配置文件来添加这个挂载点，让其开机后制动挂载到文件 ，故修改/etc/fstab文件vim /etc/fstab
+
+（8）输入w，保存退出
+
+
+
+
+# 四、实验总结
+
+经过本次实验：掌握裁剪Linux内核的方法，理解内核选项的意义； 熟悉编译内核并加载内核到目标系统的方法与过程； 了解模块与内核的关系，掌握内核模块配置编译、安装与卸载流程，为进一步编程，如驱动编程打下基础； 掌握创建、安装(卸载)并使用文件系统的方法。
+
+遇到的问题：ubuntu无法识别u盘和sdk
+
+解决：因为vmware版本低，不兼容usb3.0接口，进行升级至新版本
+
+
+# 
+
+
