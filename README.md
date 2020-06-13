@@ -1,4 +1,4 @@
 # Coursework
-《Embedded system》class homework-coursework
-## Team member:
-赵宇聪 汪倩 刘迪
+《Development Tools and Techonology of Embedded System》class homework.
+Three Members Team.
+
